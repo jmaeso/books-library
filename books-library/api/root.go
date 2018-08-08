@@ -4,17 +4,17 @@ import (
 	"net/http"
 
 	"github.com/jmaeso/books-library/books-library"
+	"github.com/jmaeso/books-library/books-library/storage"
 	"github.com/yosssi/ace"
-	"gopkg.in/gorp.v2"
 )
 
 type Page struct {
-	Books  []library.Book
+	Books  *[]library.Book
 	Filter string
 	User   string
 }
 
-func GetRootHandler(dbmap *gorp.DbMap) func(w http.ResponseWriter, r *http.Request) {
+func GetRootHandler(bs storage.BooksStore) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		template, err := ace.Load("templates/index", "", nil)
 		if err != nil {
@@ -22,13 +22,14 @@ func GetRootHandler(dbmap *gorp.DbMap) func(w http.ResponseWriter, r *http.Reque
 		}
 
 		p := Page{
-			Books:  []library.Book{},
+			Books:  &[]library.Book{},
 			Filter: getStringFromSession(r, "Filter"),
 			User:   getStringFromSession(r, "User"),
 		}
 
-		if !getBookCollection(dbmap, &p.Books, getStringFromSession(r, "SortBy"), getStringFromSession(r, "Filter"),
-			p.User, w) {
+		p.Books, err = bs.GetAllSortedAndFilteredForUser(getStringFromSession(r, "SortBy"), p.Filter, p.User)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 

@@ -6,5 +6,5 @@ type Book struct {
 	Author         string `db:"author"`
 	Classification string `db:"classification"`
 	ID             string `db:"id"`
-	Username       string `db:"user"`
+	Username       string `db:"username"`
 }

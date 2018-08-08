@@ -4,59 +4,62 @@ import (
 	"database/sql"
 	"log"
 
-	"github.com/jmaeso/books-library/pkg/classify"
-
-	sessions "github.com/goincremental/negroni-sessions"
+	"github.com/goincremental/negroni-sessions"
 	"github.com/goincremental/negroni-sessions/cookiestore"
-	gmux "github.com/gorilla/mux"
-	library "github.com/jmaeso/books-library/books-library"
+	"github.com/gorilla/mux"
+	"github.com/jmaeso/books-library/books-library"
 	"github.com/jmaeso/books-library/books-library/api"
+	"github.com/jmaeso/books-library/books-library/storage/sqlite3"
+	"github.com/jmaeso/books-library/pkg/classify"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/urfave/negroni"
 	"gopkg.in/gorp.v2"
 )
 
-var db *sql.DB
-var dbmap *gorp.DbMap
-
-func initDB() {
+func initDB() (*sql.DB, *gorp.DbMap) {
 	var err error
 
-	db, err = sql.Open("sqlite3", "dev.db")
+	db, err := sql.Open("sqlite3", "dev.db")
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	dbmap = &gorp.DbMap{Db: db, Dialect: gorp.SqliteDialect{}}
+	dbmap := &gorp.DbMap{Db: db, Dialect: gorp.SqliteDialect{}}
 
 	dbmap.AddTableWithName(library.Book{}, "books").SetKeys(true, "pk")
 	dbmap.AddTableWithName(library.User{}, "users").SetKeys(false, "username")
 	dbmap.CreateTablesIfNotExists()
+
+	return db, dbmap
 }
 
 func main() {
-	initDB()
+	db, dbmap := initDB()
 
 	classifyClient := classify.NewClient()
 
-	mux := gmux.NewRouter()
+	sqlite3BooksStore := &sqlite3.BooksStore{
+		DBMap: dbmap,
+	}
 
-	mux.HandleFunc("/", api.GetRootHandler(dbmap)).Methods("GET")
+	mux := mux.NewRouter()
+
+	mux.HandleFunc("/", api.GetRootHandler(sqlite3BooksStore)).Methods("GET")
 
 	mux.HandleFunc("/login", api.LoginHandler(dbmap))
 	mux.HandleFunc("/logout", api.LogoutHandler())
 
-	mux.HandleFunc("/books", api.GetFilteredBooksHandler(dbmap)).
+	mux.HandleFunc("/books", api.GetFilteredBooksHandler(sqlite3BooksStore)).
 		Methods("GET").
 		Queries("filter", "{filter:all|fiction|nonfiction}")
 
-	mux.HandleFunc("/books", api.GetSortedBooksHandler(dbmap)).
+	mux.HandleFunc("/books", api.GetSortedBooksHandler(sqlite3BooksStore)).
 		Methods("GET").
 		Queries("sortBy", "{sortBy:title|author|classification}")
 
-	mux.HandleFunc("/books", api.CreateBooksHandler(dbmap, classifyClient)).Methods("PUT")
+	mux.HandleFunc("/books", api.CreateBooksHandler(sqlite3BooksStore, classifyClient)).Methods("PUT")
 
-	mux.HandleFunc("/books/{pk}", api.DeleteBooksHandler(dbmap)).Methods("DELETE")
+	mux.HandleFunc("/books/{pk}", api.DeleteBooksHandler(sqlite3BooksStore)).Methods("DELETE")
 
 	mux.HandleFunc("/search", api.PostSearchHandler(classifyClient)).Methods("POST")
 
