@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"log"
+	"os"
 
 	"github.com/goincremental/negroni-sessions"
 	"github.com/goincremental/negroni-sessions/cookiestore"
@@ -64,7 +65,7 @@ func main() {
 	mux.HandleFunc("/search", api.PostSearchHandler(classifyClient)).Methods("POST")
 
 	n := negroni.Classic()
-	n.Use(sessions.Sessions("go-for-web-dev", cookiestore.New([]byte("my-secret-123"))))
+	n.Use(sessions.Sessions("books-library", cookiestore.New([]byte(os.Getenv("BOOKS_LIBRARY_COOKIES_KEY")))))
 	n.Use(negroni.HandlerFunc(api.VerifyDB(db)))
 	n.Use(negroni.HandlerFunc(api.VerifyUser(dbmap)))
 	n.UseHandler(mux)
