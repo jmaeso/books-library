@@ -2,15 +2,13 @@ package api
 
 import (
 	"encoding/json"
-	"encoding/xml"
-	"io/ioutil"
 	"net/http"
-	"net/url"
 	"strconv"
 
 	"github.com/goincremental/negroni-sessions"
 	"github.com/gorilla/mux"
 	"github.com/jmaeso/books-library/books-library"
+	"github.com/jmaeso/books-library/pkg/classify"
 	"gopkg.in/gorp.v2"
 )
 
@@ -48,9 +46,9 @@ func GetSortedBooksHandler(dbmap *gorp.DbMap) func(w http.ResponseWriter, r *htt
 	}
 }
 
-func CreateBooksHandler(dbmap *gorp.DbMap) func(w http.ResponseWriter, r *http.Request) {
+func CreateBooksHandler(dbmap *gorp.DbMap, classifyService classify.Service) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		book, err := find(r.FormValue("id"))
+		bookResponse, err := classifyService.FindByID(r.FormValue("id"))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -58,9 +56,9 @@ func CreateBooksHandler(dbmap *gorp.DbMap) func(w http.ResponseWriter, r *http.R
 
 		b := library.Book{
 			PK:             -1,
-			Title:          book.BookData.Title,
-			Author:         book.BookData.Author,
-			Classification: book.Classification.MostPopular,
+			Title:          bookResponse.BookData.Title,
+			Author:         bookResponse.BookData.Author,
+			Classification: bookResponse.Classification.MostPopular,
 			ID:             r.FormValue("id"),
 			Username:       getStringFromSession(r, "User"),
 		}
@@ -100,28 +98,6 @@ func DeleteBooksHandler(dbmap *gorp.DbMap) func(w http.ResponseWriter, r *http.R
 
 // TODO: All the underlying code needs to be refactored and restructured.
 
-type ClassifyBookResponse struct {
-	BookData struct {
-		Title  string `xml:"title,attr"`
-		Author string `xml:"author,attr"`
-		ID     string `xml:"owi,attr"`
-	} `xml:"work"`
-	Classification struct {
-		MostPopular string `xml:"sfa,attr"`
-	} `xml:"recommendations>ddc>mostPopular"`
-}
-
-type SearchResult struct {
-	Title  string `xml:"title,attr"`
-	Author string `xml:"author,attr"`
-	Year   string `xml:"hyr,attr"`
-	ID     string `xml:"owi,attr"`
-}
-
-type ClassifyResponse struct {
-	Results []SearchResult `xml:"works>work"`
-}
-
 func getBookCollection(dbmap *gorp.DbMap, books *[]library.Book, sortCol, filterByClass, username string, w http.ResponseWriter) bool {
 	if sortCol == "" {
 		sortCol = "pk"
@@ -140,45 +116,4 @@ func getBookCollection(dbmap *gorp.DbMap, books *[]library.Book, sortCol, filter
 	}
 
 	return true
-}
-
-func find(id string) (ClassifyBookResponse, error) {
-	body, err := classifyAPI("http://classify.oclc.org/classify2/Classify?&summary=true&owi=" + url.QueryEscape(id))
-	if err != nil {
-		return ClassifyBookResponse{}, err
-	}
-
-	var c ClassifyBookResponse
-	if err := xml.Unmarshal(body, &c); err != nil {
-		return ClassifyBookResponse{}, err
-	}
-
-	return c, nil
-}
-
-func search(query string) ([]SearchResult, error) {
-	body, err := classifyAPI("http://classify.oclc.org/classify2/Classify?&summary=true&title=" + url.QueryEscape(query))
-	if err != nil {
-		return []SearchResult{}, err
-	}
-
-	var c ClassifyResponse
-	err = xml.Unmarshal(body, &c)
-
-	return c.Results, err
-}
-
-func classifyAPI(url string) ([]byte, error) {
-	resp, err := http.Get(url)
-	if err != nil {
-		return []byte{}, err
-	}
-	defer resp.Body.Close()
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return []byte{}, err
-	}
-
-	return body, nil
 }

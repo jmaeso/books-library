@@ -3,11 +3,13 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+
+	"github.com/jmaeso/books-library/pkg/classify"
 )
 
-func PostSearchHandler() func(w http.ResponseWriter, r *http.Request) {
+func PostSearchHandler(classifyService classify.Service) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		results, err := search(r.FormValue("search"))
+		results, err := classifyService.SearchByTitle(r.FormValue("search"))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}

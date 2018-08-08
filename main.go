@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"log"
 
+	"github.com/jmaeso/books-library/pkg/classify"
+
 	sessions "github.com/goincremental/negroni-sessions"
 	"github.com/goincremental/negroni-sessions/cookiestore"
 	gmux "github.com/gorilla/mux"
@@ -35,6 +37,8 @@ func initDB() {
 func main() {
 	initDB()
 
+	classifyClient := classify.NewClient()
+
 	mux := gmux.NewRouter()
 
 	mux.HandleFunc("/", api.GetRootHandler(dbmap)).Methods("GET")
@@ -50,11 +54,11 @@ func main() {
 		Methods("GET").
 		Queries("sortBy", "{sortBy:title|author|classification}")
 
-	mux.HandleFunc("/books", api.CreateBooksHandler(dbmap)).Methods("PUT")
+	mux.HandleFunc("/books", api.CreateBooksHandler(dbmap, classifyClient)).Methods("PUT")
 
 	mux.HandleFunc("/books/{pk}", api.DeleteBooksHandler(dbmap)).Methods("DELETE")
 
-	mux.HandleFunc("/search", api.PostSearchHandler()).Methods("POST")
+	mux.HandleFunc("/search", api.PostSearchHandler(classifyClient)).Methods("POST")
 
 	n := negroni.Classic()
 	n.Use(sessions.Sessions("go-for-web-dev", cookiestore.New([]byte("my-secret-123"))))
