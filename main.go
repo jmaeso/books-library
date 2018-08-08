@@ -15,28 +15,15 @@ import (
 	sessions "github.com/goincremental/negroni-sessions"
 	"github.com/goincremental/negroni-sessions/cookiestore"
 	gmux "github.com/gorilla/mux"
+	library "github.com/jmaeso/books-library/books-library"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/urfave/negroni"
 	"github.com/yosssi/ace"
 	"gopkg.in/gorp.v2"
 )
 
-type Book struct {
-	PK             int64  `db:"pk"`
-	Title          string `db:"title"`
-	Author         string `db:"author"`
-	Classification string `db:"classification"`
-	ID             string `db:"id"`
-	User           string `db:"user"`
-}
-
-type User struct {
-	Username string `db:"username"`
-	Secret   []byte `db:"secret"`
-}
-
 type Page struct {
-	Books  []Book
+	Books  []library.Book
 	Filter string
 	User   string
 }
@@ -65,8 +52,8 @@ func initDB() {
 
 	dbmap = &gorp.DbMap{Db: db, Dialect: gorp.SqliteDialect{}}
 
-	dbmap.AddTableWithName(Book{}, "books").SetKeys(true, "pk")
-	dbmap.AddTableWithName(User{}, "users").SetKeys(false, "username")
+	dbmap.AddTableWithName(library.Book{}, "books").SetKeys(true, "pk")
+	dbmap.AddTableWithName(library.User{}, "users").SetKeys(false, "username")
 	dbmap.CreateTablesIfNotExists()
 }
 
@@ -79,7 +66,7 @@ func verifyDB(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
 	next(w, r)
 }
 
-func getBookCollection(books *[]Book, sortCol, filterByClass, username string, w http.ResponseWriter) bool {
+func getBookCollection(books *[]library.Book, sortCol, filterByClass, username string, w http.ResponseWriter) bool {
 	if sortCol == "" {
 		sortCol = "pk"
 	}
@@ -115,7 +102,7 @@ func verifyUser(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
 	}
 
 	if username := getStringFromSession(r, "User"); username != "" {
-		if user, _ := dbmap.Get(User{}, username); user != nil {
+		if user, _ := dbmap.Get(library.User{}, username); user != nil {
 			next(w, r)
 			return
 		}
@@ -141,7 +128,7 @@ func main() {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			user := User{r.FormValue("username"), secret}
+			user := library.User{r.FormValue("username"), secret}
 			if err := dbmap.Insert(&user); err != nil {
 				p.Error = err.Error()
 			} else {
@@ -151,13 +138,13 @@ func main() {
 				return
 			}
 		} else if r.FormValue("login") != "" {
-			user, err := dbmap.Get(User{}, r.FormValue("username"))
+			user, err := dbmap.Get(library.User{}, r.FormValue("username"))
 			if err != nil {
 				p.Error = err.Error()
 			} else if user == nil {
 				p.Error = "No such user with Username" + r.FormValue("username")
 			} else {
-				u := user.(*User)
+				u := user.(*library.User)
 				if err := bcrypt.CompareHashAndPassword(u.Secret, []byte(r.FormValue("password"))); err != nil {
 					p.Error = err.Error()
 				} else {
@@ -189,7 +176,7 @@ func main() {
 	})
 
 	mux.HandleFunc("/books", func(w http.ResponseWriter, r *http.Request) {
-		var b []Book
+		var b []library.Book
 		if !getBookCollection(&b, getStringFromSession(r, "SortBy"), r.FormValue("filter"),
 			getStringFromSession(r, "User"), w) {
 			return
@@ -204,7 +191,7 @@ func main() {
 	}).Methods("GET").Queries("filter", "{filter:all|fiction|nonfiction}")
 
 	mux.HandleFunc("/books", func(w http.ResponseWriter, r *http.Request) {
-		var b []Book
+		var b []library.Book
 		if !getBookCollection(&b, r.FormValue("sortBy"), getStringFromSession(r, "Filter"),
 			getStringFromSession(r, "User"), w) {
 			return
@@ -225,7 +212,7 @@ func main() {
 		}
 
 		p := Page{
-			Books:  []Book{},
+			Books:  []library.Book{},
 			Filter: getStringFromSession(r, "Filter"),
 			User:   getStringFromSession(r, "User"),
 		}
@@ -258,13 +245,13 @@ func main() {
 			return
 		}
 
-		b := Book{
+		b := library.Book{
 			PK:             -1,
 			Title:          book.BookData.Title,
 			Author:         book.BookData.Author,
 			Classification: book.Classification.MostPopular,
 			ID:             r.FormValue("id"),
-			User:           getStringFromSession(r, "User"),
+			Username:       getStringFromSession(r, "User"),
 		}
 
 		if err := dbmap.Insert(&b); err != nil {
@@ -283,7 +270,7 @@ func main() {
 			return
 		}
 
-		var b Book
+		var b library.Book
 		if err := dbmap.SelectOne(&b, "select * from books where pk=? and user=?", pk, getStringFromSession(r, "User")); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
