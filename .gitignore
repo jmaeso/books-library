@@ -1,3 +1,9 @@
+# sqlite3 db
+*.db
+
+# go's vendoring folder.
+vendor/
+
 # Binaries for programs and plugins
 *.exe
 *.exe~
